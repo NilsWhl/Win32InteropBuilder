@@ -311,8 +311,28 @@ public partial class FenceWindow : Window
     /// <summary>
     /// Win32 window procedure to enable native 8-way border and corner resizing with Windows cursors.
     /// </summary>
+    private static void ShowShutdownDialog()
+    {
+        try
+        {
+            var shellType = Type.GetTypeFromProgID("Shell.Application");
+            if (shellType == null) return;
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            shell.ShutdownWindows();
+        }
+        catch { }
+    }
+
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        // Alt+F4 on a fence: behave like the desktop (open the Windows shutdown dialog) instead of closing the fence
+        if (msg == 0x0112 /* WM_SYSCOMMAND */ && (wParam.ToInt64() & 0xFFF0) == 0xF060 /* SC_CLOSE */)
+        {
+            handled = true;
+            ShowShutdownDialog();
+            return IntPtr.Zero;
+        }
+
         if (msg == NativeMethods.WM_NCHITTEST && !_isRolledUp)
         {
             int x = unchecked((short)(lParam.ToInt32() & 0xFFFF));
