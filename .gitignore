@@ -97,3 +97,5 @@ StyleCopReport.xml
 # Chutzpah Test files
 _Chutzpah*
 
+
+publish/
