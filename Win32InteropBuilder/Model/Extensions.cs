@@ -76,18 +76,23 @@ namespace Win32InteropBuilder.Model
         {
             ArgumentNullException.ThrowIfNull(context);
             ArgumentNullException.ThrowIfNull(context.MetadataReader);
-            var interfaces = type.GetInterfaceImplementations();
-            foreach (var iface in interfaces)
-            {
-                var fn = context.MetadataReader.GetFullName(iface);
-                if (fn == FullName.IUnknown || fn == FullName.IDispatch)
-                    return true;
+            return isIUnknownDerived(context.MetadataReader, type);
 
-                var typeDef = context.TypeDefinitions[fn];
-                if (IsIUnknownDerived(context, typeDef))
-                    return true;
+            bool isIUnknownDerived(MetadataReader reader, TypeDefinition type)
+            {
+                var interfaces = type.GetInterfaceImplementations();
+                foreach (var iface in interfaces)
+                {
+                    var fn = reader.GetFullName(iface);
+                    if (fn == FullName.IUnknown || fn == FullName.IDispatch)
+                        return true;
+
+                    var typeDef = context.TypeDefinitions[fn];
+                    if (isIUnknownDerived(typeDef.Reader, typeDef.Definition))
+                        return true;
+                }
+                return false;
             }
-            return false;
         }
 
         public static string? RemoveWhitespaces(this string? str)
@@ -281,6 +286,8 @@ namespace Win32InteropBuilder.Model
                 (byte)value.FixedArguments[10].Value);
 #pragma warning restore CS8605 // Unboxing a possibly null value.
         }
+
+        public static string ToConstructorArguments(this Guid guid) => guid.ToString("X").Replace("{", string.Empty).Replace("}", string.Empty).Replace(",", ", ");
 
         public static bool IsNativeTypedef(this MetadataReader reader, TypeDefinition type) => type.GetCustomAttributes().Any(h => reader.GetFullName(reader.GetCustomAttribute(h)) == FullName.NativeTypedefAttribute);
         public static bool IsHandle(this MetadataReader reader, TypeDefinition type, SignatureTypeProvider signatureTypeProvider)
