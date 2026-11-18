@@ -1618,26 +1618,91 @@ public partial class FenceWindow : Window
             }
 
             e.Handled = true;
-            Mouse.Capture(null);
 
-            var helper = new WindowInteropHelper(this);
-            if (helper.Handle != IntPtr.Zero)
+            // Managed resize (instead of the native SC_SIZE modal loop, which could get stuck when
+            // clicking another overlapping fence mid-resize, and couldn't push neighbours live).
+            _resizeDir = dir;
+            _resizeStartMouse = GetMouseScreenDip(e);
+            _resizeStartRect = new Rect(Left, Top, ActualWidth, ActualHeight);
+            _resizeElement = element;
+            element.MouseMove += ResizeElement_MouseMove;
+            element.PreviewMouseLeftButtonUp += ResizeElement_MouseUp;
+            element.LostMouseCapture += ResizeElement_LostCapture;
+            element.CaptureMouse();
+        }
+    }
+
+    private int _resizeDir;
+    private Point _resizeStartMouse;
+    private Rect _resizeStartRect;
+    private FrameworkElement? _resizeElement;
+
+    private Point GetMouseScreenDip(System.Windows.Input.MouseEventArgs e)
+    {
+        // Window-relative position + window origin = screen position in DIPs (same unit as Left/Top)
+        var p = e.GetPosition(this);
+        return new Point(Left + p.X, Top + p.Y);
+    }
+
+    private void ResizeElement_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_resizeElement == null || e.LeftButton != MouseButtonState.Pressed) { EndResize(); return; }
+
+        var cur = GetMouseScreenDip(e);
+        double dx = cur.X - _resizeStartMouse.X;
+        double dy = cur.Y - _resizeStartMouse.Y;
+        var r = _resizeStartRect;
+        double minW = Math.Max(MinWidth, 80), minH = Math.Max(MinHeight, 40);
+
+        double left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
+        bool L = _resizeDir is 1 or 4 or 7, R = _resizeDir is 2 or 5 or 8;
+        bool T = _resizeDir is 3 or 4 or 5, B = _resizeDir is 6 or 7 or 8;
+        if (L) left = Math.Min(r.Left + dx, right - minW);
+        if (R) right = Math.Max(r.Right + dx, left + minW);
+        if (T) top = Math.Min(r.Top + dy, bottom - minH);
+        if (B) bottom = Math.Max(r.Bottom + dy, top + minH);
+
+        Left = left; Top = top;
+        Width = right - left; Height = bottom - top;
+
+        if (App.Config.PreventFenceOverlap)
+            _manager?.PushOthersAway(this, new Rect(left, top, right - left, bottom - top));
+    }
+
+    private void ResizeElement_MouseUp(object sender, MouseButtonEventArgs e) => EndResize();
+    private void ResizeElement_LostCapture(object sender, System.Windows.Input.MouseEventArgs e) => EndResize();
+
+    private void EndResize()
+    {
+        var element = _resizeElement;
+        if (element == null) return;
+        _resizeElement = null;
+        element.MouseMove -= ResizeElement_MouseMove;
+        element.PreviewMouseLeftButtonUp -= ResizeElement_MouseUp;
+        element.LostMouseCapture -= ResizeElement_LostCapture;
+        if (element.IsMouseCaptured) element.ReleaseMouseCapture();
+
+        {
             {
-                NativeMethods.SendMessage(helper.Handle, 0x0112 /* WM_SYSCOMMAND */, (IntPtr)(0xF000 + dir), IntPtr.Zero);
-
-                _config.Width = ActualWidth;
-                _config.Height = ActualHeight;
+                _config.X = Left;
+                _config.Y = Top;
+                // Width/Height are set explicitly during the drag; ActualWidth may lag one layout pass
+                double w = double.IsNaN(Width) ? ActualWidth : Width;
+                double h = double.IsNaN(Height) ? ActualHeight : Height;
+                _config.Width = w;
+                _config.Height = h;
                 if (_config.Orientation == FenceOrientation.Vertical)
                 {
-                    if (!_isRolledUp && ActualWidth > 100) _expandedWidth = ActualWidth;
-                    if (ActualHeight > 100) _expandedHeight = ActualHeight;
+                    if (!_isRolledUp && w > 100) _expandedWidth = w;
+                    if (h > 100) _expandedHeight = h;
                 }
                 else
                 {
-                    if (ActualWidth > 100) _expandedWidth = ActualWidth;
-                    if (!_isRolledUp && ActualHeight > 100) _expandedHeight = ActualHeight;
+                    if (w > 100) _expandedWidth = w;
+                    if (!_isRolledUp && h > 100) _expandedHeight = h;
                 }
                 SnapToEdges();
+                _manager?.SavePushedFences(this);
                 App.ConfigManager.SaveConfig(App.Config);
             }
         }

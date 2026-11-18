@@ -252,6 +252,71 @@ public class FenceManager : IDisposable
     /// This is a simple strategy: for each overlapping fence, try shifting the moved window
     /// right, left, down or up until no intersection or until attempts exhausted.
     /// </summary>
+    private readonly HashSet<FenceWindow> _pushedDuringResize = new();
+
+    private static Rect RectOf(FenceWindow w) => new(w.Left, w.Top,
+        w.ActualWidth > 0 ? w.ActualWidth : w.Width,
+        w.ActualHeight > 0 ? w.ActualHeight : w.Height);
+
+    /// <summary>
+    /// Live push used while resizing: every fence overlapping <paramref name="sourceRect"/> is moved out
+    /// along the axis of least overlap (away from the pusher), and pushed fences push others in cascade.
+    /// </summary>
+    public void PushOthersAway(FenceWindow source, Rect sourceRect)
+    {
+        var workArea = source.GetCurrentWorkArea();
+        var moved = new HashSet<FenceWindow> { source };
+        var queue = new Queue<(FenceWindow win, Rect rect)>();
+        queue.Enqueue((source, sourceRect));
+
+        int guard = 0;
+        while (queue.Count > 0 && guard++ < 64)
+        {
+            var (pusher, pr) = queue.Dequeue();
+            foreach (var other in _fenceWindows)
+            {
+                if (moved.Contains(other) || !other.IsVisible) continue;
+                var or = RectOf(other);
+                if (!pr.IntersectsWith(or)) continue;
+
+                // Penetration depth on each side
+                double pushRight = pr.Right - or.Left;   // move other right by this
+                double pushLeft = or.Right - pr.Left;    // move other left by this
+                double pushDown = pr.Bottom - or.Top;
+                double pushUp = or.Bottom - pr.Top;
+                if (pushRight <= 0 || pushLeft <= 0 || pushDown <= 0 || pushUp <= 0) continue;
+
+                double nx = or.X, ny = or.Y;
+                double minX = Math.Min(pushRight, pushLeft), minY = Math.Min(pushDown, pushUp);
+                if (minX <= minY)
+                    nx += pushRight <= pushLeft ? pushRight : -pushLeft;
+                else
+                    ny += pushDown <= pushUp ? pushDown : -pushUp;
+
+                // Keep inside the work area
+                nx = Math.Max(workArea.Left, Math.Min(nx, workArea.Right - or.Width));
+                ny = Math.Max(workArea.Top, Math.Min(ny, workArea.Bottom - or.Height));
+
+                other.Left = nx;
+                other.Top = ny;
+                moved.Add(other);
+                _pushedDuringResize.Add(other);
+                queue.Enqueue((other, new Rect(nx, ny, or.Width, or.Height)));
+            }
+        }
+    }
+
+    /// <summary>Persists the positions of fences pushed during the last resize of <paramref name="source"/>.</summary>
+    public void SavePushedFences(FenceWindow source)
+    {
+        foreach (var w in _pushedDuringResize)
+        {
+            w.Config.X = w.Left;
+            w.Config.Y = w.Top;
+        }
+        _pushedDuringResize.Clear();
+    }
+
     public void ResolveOverlap(FenceWindow movedWindow)
     {
         if (movedWindow == null) return;
