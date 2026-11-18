@@ -12,7 +12,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-blue?logo=windows" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/.NET-9.0%20WPF-purple?logo=dotnet" alt=".NET 9">
-  <img src="https://img.shields.io/badge/Release-v1.0.0-success" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.0.1-success" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/Author-Igrek-blueviolet" alt="Author">
 </p>

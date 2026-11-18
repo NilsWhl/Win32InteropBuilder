@@ -232,6 +232,7 @@ public partial class FenceWindow : Window
         var helper = new WindowInteropHelper(this);
         if (helper.Handle != IntPtr.Zero)
         {
+            s_fenceHandles.Add(helper.Handle);
             _hwndSource = HwndSource.FromHwnd(helper.Handle);
             _hwndSource?.AddHook(WndProc);
 
@@ -311,6 +312,49 @@ public partial class FenceWindow : Window
     /// <summary>
     /// Win32 window procedure to enable native 8-way border and corner resizing with Windows cursors.
     /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPOS
+    {
+        public IntPtr hwnd;
+        public IntPtr hwndInsertAfter;
+        public int x, y, cx, cy;
+        public int flags;
+    }
+
+    private static readonly HashSet<IntPtr> s_fenceHandles = new();
+
+    [DllImport("user32.dll")] private static extern IntPtr GetTopWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    /// <summary>
+    /// Walks the top-level z-order from the top and returns the last visible, non-topmost,
+    /// non-fence window found before the first fence. Inserting after it puts the fence on top
+    /// of the other fences while staying under every application window.
+    /// </summary>
+    private static IntPtr FindInsertAfterForFence(IntPtr self)
+    {
+        const uint GW_HWNDNEXT = 2;
+        const int GWL_EXSTYLE = -20;
+        const long WS_EX_TOPMOST = 0x8;
+
+        IntPtr insertAfter = IntPtr.Zero; // HWND_TOP: no app window above the fences
+        IntPtr h = GetTopWindow(IntPtr.Zero);
+        int guard = 0;
+        while (h != IntPtr.Zero && guard++ < 2000)
+        {
+            if (h != self)
+            {
+                if (s_fenceHandles.Contains(h)) break;
+                if (IsWindowVisible(h) && (GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64() & WS_EX_TOPMOST) == 0)
+                    insertAfter = h;
+            }
+            h = GetWindow(h, GW_HWNDNEXT);
+        }
+        return insertAfter;
+    }
+
     private static void ShowShutdownDialog()
     {
         try
@@ -331,6 +375,28 @@ public partial class FenceWindow : Window
             handled = true;
             ShowShutdownDialog();
             return IntPtr.Zero;
+        }
+
+        // Keep fences pinned to the bottom of the z-order: clicking/activating a fence must never
+        // bring it above other application windows
+        if (msg == 0x0046 /* WM_WINDOWPOSCHANGING */ && lParam != IntPtr.Zero)
+        {
+            const int SWP_NOZORDER = 0x0004;
+            var pos = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+            // Only intervene when the z-order is actually changing (activation / bring-to-front).
+            // Plain moves and resizes (SWP_NOZORDER) are left untouched so the drag/resize loop
+            // doesn't trigger a z-order change on every mouse move.
+            if ((pos.flags & SWP_NOZORDER) == 0)
+            {
+                // Place the fence just above the other fences but below every normal app window.
+                // (Forcing HWND_BOTTOM made overlapping fences fight over the z-order and froze the app.)
+                var insertAfter = FindInsertAfterForFence(hwnd);
+                if (pos.hwndInsertAfter != insertAfter)
+                {
+                    pos.hwndInsertAfter = insertAfter;
+                    Marshal.StructureToPtr(pos, lParam, false);
+                }
+            }
         }
 
         if (msg == NativeMethods.WM_NCHITTEST && !_isRolledUp)
@@ -2049,6 +2115,7 @@ public partial class FenceWindow : Window
         _folderLoadCts?.Cancel();
         _folderLoadCts?.Dispose();
         _folderWatcher?.Dispose();
+        if (_hwndSource != null) s_fenceHandles.Remove(_hwndSource.Handle);
         _hwndSource?.Dispose();
         base.OnClosed(e);
     }

@@ -1043,7 +1043,41 @@ public partial class MainWindow : Window
         }
 
         FenceEditorList.Items.Clear();
+
+        // "All fences" card: a general style applied to every fence at once
+        if (App.Config.Fences.Count > 0)
+        {
+            var first = App.Config.Fences[0];
+            var template = new FenceConfig
+            {
+                Title = App.Config.Language == AppLanguage.English ? "All fences" : "Toutes les fences",
+                IconEmoji = "🌐",
+                Shape = first.Shape,
+                Opacity = first.Opacity,
+                CornerRadius = first.CornerRadius,
+                BackgroundColorHex = first.BackgroundColorHex,
+                AutoRollUpOnHover = first.AutoRollUpOnHover,
+                RollUpAnimationDurationMs = first.RollUpAnimationDurationMs,
+                Orientation = first.Orientation,
+                ShowTabTitles = first.ShowTabTitles,
+                ChameleonMode = first.ChameleonMode
+            };
+            AddFenceEditorCard(template, () => App.Config.Fences.ToList(), isAll: true);
+        }
+
         foreach (var fence in App.Config.Fences)
+        {
+            var id = fence.Id;
+            AddFenceEditorCard(fence, () => App.Config.Fences.Where(x => x.Id == id).ToList(), isAll: false);
+        }
+    }
+
+    /// <summary>
+    /// Builds one editor card. Every control writes to all fences returned by <paramref name="targets"/>:
+    /// a single fence for a normal card, every fence for the "All fences" card.
+    /// </summary>
+    private void AddFenceEditorCard(FenceConfig fence, Func<List<FenceConfig>> targets, bool isAll)
+    {
         {
             var card = new Border
             {
@@ -1086,7 +1120,7 @@ public partial class MainWindow : Window
                 RefreshFenceEditor();
             };
             Grid.SetColumn(deleteFenceBtn, 1);
-            cardHeader.Children.Add(deleteFenceBtn);
+            if (!isAll) cardHeader.Children.Add(deleteFenceBtn);
 
             stack.Children.Add(cardHeader);
 
@@ -1104,7 +1138,7 @@ public partial class MainWindow : Window
             var fenceId = fence.Id;
             shapeCombo.SelectionChanged += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null && shapeCombo.SelectedItem is FenceShape s) f.Shape = s;
             };
             shapePanel.Children.Add(shapeCombo);
@@ -1117,7 +1151,7 @@ public partial class MainWindow : Window
             var opacityLabel = new TextBlock { Text = $"{fence.Opacity * 100:0}%", Style = (Style)FindResource("BodyText"), Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
             opacitySlider.ValueChanged += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null) f.Opacity = opacitySlider.Value / 100.0;
                 opacityLabel.Text = $"{opacitySlider.Value:0}%";
             };
@@ -1131,7 +1165,7 @@ public partial class MainWindow : Window
             var radiusSlider = new Slider { Minimum = 0, Maximum = 50, Value = fence.CornerRadius, Width = 200 };
             radiusSlider.ValueChanged += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null) f.CornerRadius = radiusSlider.Value;
             };
             radiusPanel.Children.Add(radiusSlider);
@@ -1160,7 +1194,7 @@ public partial class MainWindow : Window
             };
             colorBox.LostFocus += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.BackgroundColorHex = colorBox.Text;
@@ -1200,7 +1234,7 @@ public partial class MainWindow : Window
                 {
                     colorBox.Text = selectedHex;
                     colorPreview.Background = swatch.Background;
-                    var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                    foreach (var f in targets())
                     if (f != null)
                     {
                         f.BackgroundColorHex = selectedHex;
@@ -1221,7 +1255,7 @@ public partial class MainWindow : Window
             };
             autoRollUpToggle.Click += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.AutoRollUpOnHover = autoRollUpToggle.IsChecked == true;
@@ -1263,7 +1297,7 @@ public partial class MainWindow : Window
             speedSlider.ValueChanged += (_, _) =>
             {
                 int val = (int)speedSlider.Value;
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.RollUpAnimationDurationMs = val;
@@ -1343,7 +1377,7 @@ public partial class MainWindow : Window
 
             horizBtn.Click += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.Orientation = FenceOrientation.Horizontal;
@@ -1355,7 +1389,7 @@ public partial class MainWindow : Window
 
             vertBtn.Click += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.Orientation = FenceOrientation.Vertical;
@@ -1379,7 +1413,7 @@ public partial class MainWindow : Window
             };
             tabTitlesToggle.Click += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.ShowTabTitles = tabTitlesToggle.IsChecked == true;
@@ -1399,7 +1433,7 @@ public partial class MainWindow : Window
             };
             chameleonToggle.Click += (_, _) =>
             {
-                var f = App.Config.Fences.FirstOrDefault(x => x.Id == fenceId);
+                foreach (var f in targets())
                 if (f != null)
                 {
                     f.ChameleonMode = chameleonToggle.IsChecked == true;

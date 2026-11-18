@@ -20,8 +20,23 @@ public partial class App : Application
     public static AppConfig Config { get; set; } = new();
     public static ConfigManager ConfigManager { get; } = new();
 
+    private static void LogCrash(Exception? ex)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DesktopOrganizeMaxxing");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "crash.log"), $"[{DateTime.Now:O}]\n{ex}\n\n");
+        }
+        catch { }
+    }
+
     private void Application_Startup(object sender, StartupEventArgs e)
     {
+        DispatcherUnhandledException += (s, ex) => LogCrash(ex.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (s, ex) => LogCrash(ex.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (s, ex) => LogCrash(ex.Exception);
+
         bool createdNew;
         try
         {

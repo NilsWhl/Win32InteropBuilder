@@ -5,7 +5,7 @@
 [Setup]
 AppId={{D0E5A7B8-9A21-4F93-87A4-E9723049F1B2}
 AppName=Desktop Organize Maxxing
-AppVersion=1.0.0
+AppVersion=1.0.1
 AppPublisher=Igrek
 AppPublisherURL=https://github.com/DOMaxxing
 DefaultDirName={autopf}\DesktopOrganizeMaxxing
